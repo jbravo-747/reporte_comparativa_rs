@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/dashboard_imco_digital_2026.html" }
+  ]
+}
