@@ -55,12 +55,23 @@ main{max-width:1360px;margin:0 auto;padding:28px 24px 60px}
 .sh-sub{font-size:13px;color:var(--ts);margin-top:3px}
 
 /* ── KPI CARDS ── */
-.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(182px,1fr));gap:12px;margin-bottom:26px}
-.kpi-card{background:var(--sf);border:1px solid var(--br);border-radius:12px;padding:16px 18px;cursor:pointer;transition:box-shadow .2s,transform .2s;position:relative;overflow:hidden}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(182px,1fr));gap:12px;margin-bottom:16px}
+.kpi-card{background:var(--sf);border:1px solid var(--br);border-radius:12px;padding:16px 18px;cursor:pointer;transition:box-shadow .25s,transform .25s,opacity .25s,filter .25s;position:relative;overflow:hidden}
 .kpi-card::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--nc,var(--bm));transform:scaleX(0);transform-origin:left;transition:transform .28s cubic-bezier(.16,1,.3,1)}
 .kpi-card:hover{box-shadow:var(--s2);transform:translateY(-2px)}
-.kpi-card:hover::after,.kpi-card:focus::after{transform:scaleX(1)}
+.kpi-card:hover::after,.kpi-card:focus::after,.kpi-card.kpi-sel::after{transform:scaleX(1)}
 .kpi-card:focus{outline:2px solid var(--bm);outline-offset:2px}
+.kpi-card.kpi-sel{border-color:var(--nc,var(--bm));box-shadow:0 0 0 3px color-mix(in srgb,var(--nc,var(--bm)) 20%,transparent),var(--s2);transform:translateY(-2px)}
+.kpi-card.dimmed{opacity:.28;filter:grayscale(55%);transform:none!important;box-shadow:none!important}
+.kpi-card.dimmed:hover{opacity:.45;filter:grayscale(30%)}
+/* ── FILTER BANNER ── */
+.fbanner{display:flex;align-items:center;gap:10px;background:var(--ncb,var(--bl));border:1px solid color-mix(in srgb,var(--nc,var(--bm)) 35%,transparent);border-radius:8px;padding:9px 14px;margin-bottom:18px;font-size:13px;color:var(--ncd,var(--bd));font-weight:500;animation:slideDown .2s ease}
+@keyframes slideDown{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.fbanner strong{font-weight:700}
+.fbanner-ico{width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.fbanner-ico svg{width:11px;height:11px;fill:white}
+.fbanner-clear{margin-left:auto;background:none;border:1px solid color-mix(in srgb,var(--nc,var(--bm)) 45%,transparent);color:var(--ncd,var(--bd));border-radius:6px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .15s}
+.fbanner-clear:hover{background:var(--nc,var(--bm));color:#fff;border-color:transparent}
 .kpi-top{display:flex;align-items:center;gap:9px;margin-bottom:10px}
 .nio{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .nio svg{width:16px;height:16px;fill:white}
@@ -197,9 +208,10 @@ td.c{text-align:center}
 <section id="s1" class="sec" :class="{on: tab==='s1'}">
   <div class="sh">
     <h1 class="sh-title">Comparativo YoY — Enero/Abril 2025 vs. 2026</h1>
-    <p class="sh-sub">Crecimiento de audiencia y métricas de desempeño. Haz clic en la leyenda de la gráfica para mostrar/ocultar redes.</p>
+    <p class="sh-sub">Haz clic en una tarjeta para filtrar todas las secciones por esa red social. Clic de nuevo para quitar el filtro.</p>
   </div>
   <div class="kpi-grid" id="kpi-grid"></div>
+  <div id="filter-banner"></div>
   <div class="cc">
     <div class="cc-title">Tendencia de Crecimiento de Seguidores — Ene–Abr 2026</div>
     <div class="cc-sub">% de crecimiento acumulado desde el 1 de enero 2026. Las redes con mayor inclinación crecen más rápido.</div>
@@ -428,23 +440,27 @@ function counter(el, target, ms=1400) {
 ══════════════════════════════════════ */
 let growthChart = null;
 const built = {};
+const chartReg = {};
+let appRef = null;
 
 document.addEventListener('alpine:init', () => {
   Alpine.data('app', () => ({
     tab: 's1',
     f: {fb:true,tw:true,ig:true,li:true,tt:true,yt:true,bo:true,wb:true},
+    selected: null,
 
     init() {
+      appRef = this;
       this.$nextTick(() => {
         requestAnimationFrame(() => {
           mkCards();
           mkPills(this);
-          mkTable(this.f);
+          mkTable(this.f, null);
           mkGrowthChart();
           document.querySelectorAll('.kpi-num[data-t]').forEach(el => counter(el, +el.dataset.t));
         });
       });
-      this.$watch('f', v => { mkTable(v); updGrowth(v); });
+      this.$watch('f', v => { mkTable(v, this.selected); updGrowth(v, this.selected); });
     },
 
     go(t) {
@@ -452,11 +468,24 @@ document.addEventListener('alpine:init', () => {
       this.tab = t;
       this.$nextTick(() => requestAnimationFrame(() => {
         if (t === 's2' && !built.s2) { built.s2=1; mkBarChart(); mkRadialChart(); mkProjTable(); }
-        if (t === 's3' && !built.s3) { built.s3=1; mkChannelCards(); }
+        else if (t === 's2' && built.s2) { updS2(this.selected); }
+        if (t === 's3' && !built.s3) { built.s3=1; mkChannelCards(this.selected); }
+        else if (t === 's3' && built.s3) { updS3(this.selected); }
       }));
     },
 
-    tog(g) { this.f[g] = !this.f[g]; }
+    tog(g) { this.f[g] = !this.f[g]; },
+
+    clickCard(id) {
+      this.selected = this.selected === id ? null : id;
+      const sel = this.selected;
+      updCardStyles(sel);
+      updBanner(sel);
+      mkTable(this.f, sel);
+      updGrowth(this.f, sel);
+      if (built.s2) updS2(sel);
+      if (built.s3) updS3(sel);
+    }
   }));
 });
 
@@ -470,17 +499,46 @@ function mkCards() {
   D.cards.forEach(d => {
     const arrow = d.dir==='up' ? ARROW_UP : d.dir==='down' ? ARROW_DOWN : ARROW_SIDE;
     const sign  = d.dir==='up' ? '+' : d.dir==='down' ? '' : '±';
-    g.innerHTML += `
-    <div class="kpi-card" style="--nc:${d.nc}" tabindex="0"
-         aria-label="${d.name}: ${fmt(d.followers)} seguidores, ${sign}${d.delta}% YoY">
+    const div = document.createElement('div');
+    div.className = 'kpi-card';
+    div.dataset.id = d.id;
+    div.style.cssText = `--nc:${d.nc};--ncb:${d.ncb};--ncd:${d.ncd}`;
+    div.setAttribute('tabindex','0');
+    div.setAttribute('role','button');
+    div.setAttribute('aria-label',`Filtrar por ${d.name}: ${fmt(d.followers)} seguidores, ${sign}${d.delta}% YoY`);
+    div.innerHTML = `
       <div class="kpi-top">
         <div class="nio" style="background:${d.nc}">${IC[d.id]}</div>
         <div class="kpi-lbl">${d.name}</div>
       </div>
       <div class="kpi-num" data-t="${d.followers}">0</div>
-      <span class="kpi-delta ${d.dir}">${arrow}${sign}${d.delta}% YoY</span>
-    </div>`;
+      <span class="kpi-delta ${d.dir}">${arrow}${sign}${d.delta}% YoY</span>`;
+    div.addEventListener('click', () => appRef && appRef.clickCard(d.id));
+    div.addEventListener('keydown', e => { if(e.key==='Enter'||e.key===' ') { e.preventDefault(); appRef && appRef.clickCard(d.id); }});
+    g.appendChild(div);
   });
+}
+
+function updCardStyles(sel) {
+  document.querySelectorAll('.kpi-card').forEach(c => {
+    const id = c.dataset.id;
+    c.classList.toggle('kpi-sel', sel !== null && id === sel);
+    c.classList.toggle('dimmed',  sel !== null && id !== sel);
+  });
+}
+
+function updBanner(sel) {
+  const el = document.getElementById('filter-banner');
+  if (!el) return;
+  if (!sel) { el.innerHTML = ''; return; }
+  const d = D.cards.find(c => c.id === sel);
+  if (!d) return;
+  el.innerHTML = `
+    <div class="fbanner" style="--nc:${d.nc};--ncb:${d.ncb};--ncd:${d.ncd}">
+      <div class="fbanner-ico" style="background:${d.nc}">${IC[d.id]}</div>
+      <span>Filtrando por <strong>${d.name}</strong> — todas las secciones muestran solo esta red</span>
+      <button class="fbanner-clear" onclick="appRef&&appRef.clickCard('${d.id}')" aria-label="Quitar filtro">✕ Quitar filtro</button>
+    </div>`;
 }
 
 /* ══════════════════════════════════════
@@ -510,12 +568,13 @@ function mkPills(comp) {
 /* ══════════════════════════════════════
    YOY TABLE
 ══════════════════════════════════════ */
-function mkTable(f) {
+function mkTable(f, sel) {
   const tb = document.getElementById('yoy-body');
   if (!tb) return;
   tb.innerHTML = '';
   let cur = null;
   D.rows.forEach(r => {
+    if (sel && r.g !== sel) return;
     if (!f[r.g]) return;
     if (r.g !== cur) {
       cur = r.g;
@@ -573,9 +632,12 @@ function mkGrowthChart() {
   growthChart.render();
 }
 
-function updGrowth(f) {
+function updGrowth(f, sel) {
   if (!growthChart) return;
-  D.cards.forEach(c => { f[c.id] ? growthChart.showSeries(c.name) : growthChart.hideSeries(c.name); });
+  D.cards.forEach(c => {
+    const show = f[c.id] && (sel === null || c.id === sel);
+    show ? growthChart.showSeries(c.name) : growthChart.hideSeries(c.name);
+  });
 }
 
 /* ══════════════════════════════════════
@@ -585,7 +647,7 @@ function mkBarChart() {
   const el = document.getElementById('chart-bar');
   if (!el) return;
   const colors = D.comply.map(r => r.pct>=120?'#059669':r.pct>=85?'#D97706':'#DC2626');
-  new ApexCharts(el, {
+  chartReg.bar = new ApexCharts(el, {
     chart:{type:'bar',height:270,toolbar:{show:false},fontFamily:'Inter,sans-serif',
       animations:{enabled:true,easing:'easeinout',speed:900,animateGradually:{enabled:true,delay:80}}},
     series:[{name:'Cumplimiento',data:D.comply.map(r=>r.pct)}],
@@ -613,7 +675,7 @@ function mkBarChart() {
 function mkRadialChart() {
   const el = document.getElementById('chart-radial');
   if (!el) return;
-  new ApexCharts(el, {
+  chartReg.radial = new ApexCharts(el, {
     chart:{type:'radialBar',height:270,toolbar:{show:false},fontFamily:'Inter,sans-serif',
       animations:{enabled:true,easing:'easeinout',speed:900}},
     series:D.annual.map(r=>r.pct),
@@ -639,10 +701,15 @@ function mkRadialChart() {
    PROJECTION TABLE
 ══════════════════════════════════════ */
 function mkProjTable() {
+  renderProjRows(null);
+}
+
+function renderProjRows(sel) {
   const tb = document.getElementById('proj-body');
-  if (!tb || tb.children.length) return;
+  if (!tb) return;
+  tb.innerHTML = '';
   const lbl = {pos:'Sí cumple',neu:'Probable',neg:'En riesgo'};
-  D.proj.forEach(p => {
+  D.proj.filter(p => !sel || p.id === sel).forEach(p => {
     tb.innerHTML += `
     <tr>
       <td class="tca" style="border-left:3px solid ${p.nc}">
@@ -659,9 +726,38 @@ function mkProjTable() {
 }
 
 /* ══════════════════════════════════════
+   UPDATE SECTION 2 BY FILTER
+══════════════════════════════════════ */
+function updS2(sel) {
+  const comply  = sel ? D.comply.filter(r=>r.id===sel)  : D.comply;
+  const annual  = sel ? D.annual.filter(r=>{ const c=D.comply.find(x=>x.id===sel); return c&&r.name===c.name; }) : D.annual;
+  const colors  = comply.map(r=>r.pct>=120?'#059669':r.pct>=85?'#D97706':'#DC2626');
+
+  if (chartReg.bar) {
+    chartReg.bar.updateOptions({
+      colors,
+      xaxis:{categories:comply.map(r=>`${r.name}   (${r.real.toLocaleString()} / ${r.meta.toLocaleString()})`),
+        max:250,labels:{formatter:v=>v+'%',style:{colors:'#64748B',fontSize:'11px'}}},
+    }, false, true);
+    chartReg.bar.updateSeries([{name:'Cumplimiento',data:comply.map(r=>r.pct)}], true);
+  }
+  if (chartReg.radial) {
+    chartReg.radial.updateOptions({ labels: annual.map(r=>r.name) }, false, true);
+    chartReg.radial.updateSeries(annual.map(r=>r.pct), true);
+  }
+  renderProjRows(sel);
+}
+
+/* ══════════════════════════════════════
    CHANNEL CARDS + SPARKLINES
 ══════════════════════════════════════ */
-function mkChannelCards() {
+function updS3(sel) {
+  document.querySelectorAll('#ch-grid .chc').forEach(card => {
+    card.style.display = (!sel || card.dataset.id === sel) ? '' : 'none';
+  });
+}
+
+function mkChannelCards(sel) {
   const g = document.getElementById('ch-grid');
   if (!g) return;
   g.innerHTML = '';
@@ -681,7 +777,7 @@ function mkChannelCards() {
       </div>` : `<div class="er-sec"><div class="er-row2"><span class="er-lbl">Engagement Rate</span><span class="er-val na">N/A para este canal</span></div></div>`;
     const bdgs = ch.badges.map(b=>`<span class="bdg ${b.c}">${b.l}</span>`).join('');
     g.innerHTML += `
-    <div class="chc" style="--nc:${ch.nc}">
+    <div class="chc" data-id="${ch.id}" style="--nc:${ch.nc}">
       <div class="chh">
         <div class="chico" style="background:${ch.nc}">${IC[ch.id]}</div>
         <div><div class="ch-name">${ch.name}</div><div class="ch-handle">${ch.handle}</div></div>
@@ -712,6 +808,7 @@ function mkChannelCards() {
           theme:'light',marker:{show:false},fixed:{enabled:false}},
       }).render();
     });
+    updS3(sel);
   });
 }
 </script>
